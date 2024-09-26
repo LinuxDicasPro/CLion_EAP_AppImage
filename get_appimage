@@ -1,0 +1,139 @@
+#!/bin/bash
+#
+# tarball2appimage by LinuxDicasPro
+#
+####################################
+
+
+destdir=~/__APPIMAGE__
+test -e "../_APPIMAGE" && destdir="../_APPIMAGE" # Opcional
+
+
+###########################################
+
+arch="x86_64"
+prg="clion"
+link="https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=clion-eap"
+
+###########################################
+
+
+for i in {1..50}; { printf '─'; }; printf "\n"
+printf "Search latest version: "
+
+
+########
+
+version=( $(grep -Eo "([0-9]+[.])+[0-9]+" <(links -dump $link)) )
+
+########
+
+
+printf "\033[1;32m${version[0]} ${version[1]}\033[m\n"
+for i in {1..50}; { printf '─'; }; printf "\n"
+
+test -z "$version" && {
+    echo "update script. version not found!"
+    exit 1
+}
+
+set -e
+
+test ! -e $destdir && mkdir -p $destdir
+cd $destdir
+
+
+test -e "$prg-${version[0]}-$arch.AppImage" -o -e "$prg-${version[1]}-$arch.AppImage" && {
+    echo "appimage found!"
+    exit 0
+}
+
+
+test ! -e "appimagetool-x86_64.AppImage" && {
+    link_tool="https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage"
+    wget -c -q --show-progress "$link_tool"
+    chmod +x "appimagetool-x86_64.AppImage"
+}
+
+
+#########
+
+link_prg1="https://download.jetbrains.com/cpp/CLion-${version[0]}.tar.gz"
+link_prg2="https://download.jetbrains.com/cpp/CLion-${version[1]}.tar.gz"
+ver="${version[0]}"
+
+#########
+
+
+wget -c -q --show-progress "$link_prg1" || { wget -c -q --show-progress "$link_prg2" ; ver="${version[1]}"; }
+file_prg="$(echo CLion*$ver*)"
+
+cwd=$PWD
+
+rm -rf "$prg.AppDir"
+mkdir -p "$prg.AppDir"
+cd "$prg.AppDir"
+
+echo -e "\nextract $file_prg ..."
+printf "$file_prg\t["
+tar -xzf "$cwd/$file_prg" --checkpoint=5000 --checkpoint-action=exec='printf ='
+echo -e "]\n"
+
+cp -r clion-* clion
+cp clion/bin/clion.svg .
+
+####################################
+
+appimage_name="CLion EAP"
+comment="IDE for C/C++"
+categories="Development;"
+
+####################################
+
+
+echo "[Desktop Entry]
+Name=$appimage_name
+GenericName=$appimage_name
+Comment=$comment
+Exec=$prg
+Icon=$prg
+Type=Application
+Terminal=false
+Categories=$categories" > "$prg.desktop"
+
+echo "#!/bin/bash
+
+cd \$APPDIR
+desktopfile=~/.local/share/applications/$prg.desktop
+iconfile=~/.local/share/pixmaps/$prg.svg
+
+test ! -e \"\$desktopfile\" && cp $prg.desktop ~/.local/share/applications/
+test ! -e \"\$iconfile\" && cp $prg.svg ~/.local/share/pixmaps/
+
+if ! grep -q \"\$APPIMAGE\" \"\$desktopfile\"; then
+    sed -i \"s:Exec=.*:Exec=\$APPIMAGE:\" \"\$desktopfile\"
+    sed -i \"s:Icon=.*:Icon=\$iconfile:\" \"\$desktopfile\"
+    /usr/bin/update-desktop-database -q || true
+    test -e usr/share/icons/hicolor/icon-theme.cache && {
+        test -x /usr/bin/gtk-update-icon-cache && /usr/bin/gtk-update-icon-cache ~/.local/share/pixmaps/ 2>&1 >&- || true
+    }
+fi
+
+cd \$APPDIR/$prg/bin
+./$prg.sh" > AppRun
+
+chmod +x AppRun
+cd ..
+
+printf "\n"; for ((i=0; i<$COLUMNS; i++)); { printf '─'; }; echo -e "\n"
+
+env ARCH=$arch ./appimagetool-x86_64.AppImage "$prg.AppDir"
+mv "${appimage_name// /_}-$arch.AppImage" "$prg-eap-$ver-$arch.AppImage"
+
+printf "\n"; for ((i=0; i<$COLUMNS; i++)); { printf '─'; }; echo -e "\n"
+
+rm -rf "$prg.AppDir"
+cd ..
+
+echo "appimage saved in $destdir/$prg-eap-$ver-$arch.AppImage"
+exit 0
